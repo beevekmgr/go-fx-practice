@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 
+	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 
@@ -19,24 +21,52 @@ type Config struct {
 	ApplicationConfig `yaml:"application"`
 }
 
-func main() {
-	conf := &Config{}
+func ProvideConfig() *Config {
+	conf := Config{}
 	data, err := ioutil.ReadFile("config/base.yaml")
 	if err != nil {
 		fmt.Println(err)
 	}
-
 	err = yaml.Unmarshal([]byte(data), &conf)
 	if err != nil {
 		fmt.Println(err)
 	}
 
+	return &conf
+}
+
+func ProvideLogger() *zap.SugaredLogger {
 	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	// slogger := logger.Sugar()
+	slogger := logger.Sugar()
 
-	mux := http.NewServeMux()
-	httphandler.New(mux)
+	return slogger
+}
 
-	http.ListenAndServe(conf.ApplicationConfig.Address, mux)
+func registerHooks(
+	lifecycle fx.Lifecycle,
+	logger *zap.SugaredLogger, cfg *Config, mux *http.ServeMux,
+) {
+	lifecycle.Append(
+		fx.Hook{
+			OnStart: func(context.Context) error {
+				go http.ListenAndServe(cfg.ApplicationConfig.Address, mux)
+				return nil
+			},
+			OnStop: func(context.Context) error {
+				return logger.Sync()
+			},
+		},
+	)
+}
+
+func main() {
+
+	fx.New(
+		fx.Provide(ProvideConfig),
+		fx.Provide(ProvideLogger),
+		fx.Provide(http.NewServeMux),
+		fx.Invoke(httphandler.New),
+		fx.Invoke(registerHooks),
+	).Run()
+
 }
