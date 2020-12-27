@@ -23,3 +23,4 @@ func (h *Handler) registerRoutes() {
 func (h *Handler) hello(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 	w.Write([]byte("Hello World"))
+}
